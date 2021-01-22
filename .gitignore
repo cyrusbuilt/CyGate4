@@ -1,0 +1,14 @@
+# Platform IO stuff
+.pio
+include/
+lib/
+test/
+
+# No gerber packages, archives, etc.
+*.zip
+
+# macOS crap
+.DS_Store
+
+# VSCode stuff
+.vscode/
