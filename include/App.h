@@ -72,9 +72,7 @@ public:
 	void init();
 	void update();
 	void reboot();
-	void onKeypadCommand(KeypadData* cmdData);
 	void onCheckMqtt();
-	static void keypadCommandCallback(KeypadData* cmdData, void* thisPointer);
 	void failSafe();
 	void getAvailableNetworks();
 	void doFactoryRestore();
@@ -121,9 +119,12 @@ private:
 	void initCardReaders();
 	void initRelayModules();
 	void initFilesystem();
+	void loadDoors();
 	void initMDNS();
 	void initOTA();
 	void initConsole();
+	void onKeypadCommand(KeypadData* cmdData);
+	void onFobRead(Tag* tagData);
 };
 
 #endif

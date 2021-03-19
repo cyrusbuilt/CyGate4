@@ -1,0 +1,33 @@
+{
+	"doors": [
+		{
+			"name": "Front Door",
+			"readers": [
+				{
+					"id": 0
+				}
+			],
+			"keypads": [
+				{
+					"id": 0
+				}
+			],
+			"inputs": [
+				{
+					"type": 0,
+					"moduleId": 0,
+					"inputId": 0
+				},
+				{
+					"type": 1,
+					"moduleId": 0,
+					"inputId": 1
+				}
+			],
+			"lockRelay": {
+				"moduleId": 0,
+				"relayId": 0
+			}
+		}
+	]
+}

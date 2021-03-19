@@ -11,6 +11,7 @@
 #define DEFAULT_TIMEZONE -4
 #define SERIAL_BAUD 115200
 #define CONFIG_FILE_PATH "/config.json"
+#define DOOR_FILE_PATH "/doors.json"
 #define CHECK_WIFI_INTERVAL 30000               // How often to check WiFi status (milliseconds).
 #define CHECK_MQTT_INTERVAL 35000               // How often to check connectivity to the MQTT broker.
 #define CLOCK_SYNC_INTERVAL 3600000             // How often to sync the local clock with NTP (milliseconds).

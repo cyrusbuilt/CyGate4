@@ -6,6 +6,7 @@
 
 #include "ArduinoJson.h"
 #include "Console.h"
+#include "Doors.h"
 #include "ESPCrashMonitor-master/ESPCrashMonitor.h"
 #include "ResetManager.h"
 
@@ -119,8 +120,55 @@ void Application::publishSystemState() {
         doc["client_id"] = config.hostname;
         doc["systemState"] = (uint8_t)sysState;
         doc["firmwareVersion"] = FIRMWARE_VERSION;
+        doc["armState"] = (uint8_t)armState;
+
+        JsonArray theDoors = doc.createNestedArray("doors");
+        auto doors = DoorManager.getDoors();
+        for (auto d = doors.begin(); d != doors.end(); d++) {
+            JsonObject obj;
+            obj["name"] = d->name;
+            obj["state"] = (uint8_t)d->state;
+            obj["enabled"] = d->enabled ? 1 : 0;
+            obj["lockState"] = (uint8_t)d->lockState;
+
+            if (&d->lockRelay != nullptr) {
+                JsonObject rel = obj.createNestedObject("lockRelay");
+                rel["moduleId"] = d->lockRelay.moduleId;
+                rel["relayId"] = d->lockRelay.relayId;
+            }
+
+            JsonArray readers = obj.createNestedArray("readers");
+            if (d->readers.size() > 0) {
+                for (auto r = d->readers.begin(); r != d->readers.end(); r++) {
+                    JsonObject rdr;
+                    rdr["id"] = r->id;
+                    readers.add(rdr);
+                }
+            }
+
+            JsonArray keypads = obj.createNestedArray("keypads");
+            if (d->keypads.size() > 0) {
+                for (auto k = d->keypads.begin(); k != d->keypads.end(); k++) {
+                    JsonObject kpd;
+                    kpd["id"] = k->id;
+                    keypads.add(kpd);
+                }
+            }
+
+            JsonArray inputs = obj.createNestedArray("inputs");
+            if (d->inputs.size() > 0) {
+                for (auto i = d->inputs.begin(); i != d->inputs.end(); i++) {
+                    JsonObject inp;
+                    inp["type"] = (uint8_t)i->type;
+                    inp["moduleId"] = i->moduleId;
+                    inp["inputId"] = i->inputId;
+                    inputs.add(inp);
+                }
+            }
+
+            theDoors.add(obj);
+        }
         
-        // TODO What else to send?
         doc.shrinkToFit();
 
         String jsonStr;
@@ -339,6 +387,66 @@ void Application::loadConfiguration() {
     Serial.println(F("DONE"));
 }
 
+void Application::loadDoors() {
+    Serial.print(F("INFO: Loading door file "));
+    Serial.print(DOOR_FILE_PATH);
+    Serial.print(F(" ... "));
+    if (!filesystemMounted) {
+        Serial.println(F("FAIL"));
+        Serial.println(F("ERROR: Filesystem not mounted."));
+        return;
+    }
+
+    if (!SPIFFS.exists(DOOR_FILE_PATH)) {
+        Serial.println(F("FAIL"));
+        Serial.println(F("WARN: No door file found. Skipping..."));
+        return;
+    }
+
+    File doorFile = SPIFFS.open(DOOR_FILE_PATH, "r");
+    if (!doorFile) {
+        Serial.println(F("FAIL"));
+        Serial.println(F("ERROR: Unable to open door file."));
+        return;
+    }
+
+    size_t size = doorFile.size();
+    uint16_t freeMem = ESP.getMaxAllocHeap() - 512;
+    if (size > freeMem) {
+        Serial.println(F("FAIL"));
+        Serial.print(F("ERROR: Not enough free memory to load door file. Size = "));
+        Serial.print(size);
+        Serial.print(F(", Free = "));
+        Serial.println(freeMem);
+        doorFile.close();
+        return;
+    }
+
+    DynamicJsonDocument doc(freeMem);
+    DeserializationError error = deserializeJson(doc, doorFile);
+    if (error) {
+        Serial.println(F("FAIL"));
+        Serial.println(F("ERROR: Fail to parse door file to JSON."));
+        doorFile.close();
+        return;
+    }
+
+    doc.shrinkToFit();
+    doorFile.close();
+
+    if (doc.containsKey("doors")) {
+        DoorManager.clearDoors();
+        JsonArray doors = doc["doors"];
+        for (auto d : doors) {
+            Door theDoor;
+            theDoor.name = d["name"].as<const char*>();
+            // TODO load the remaining model
+        }
+    }
+
+    doc.clear();
+}
+
 void Application::doFactoryRestore() {
     Serial.println();
     Serial.println(F("Are you sure you wish to restore to factory default? (Y/n)"));
@@ -497,26 +605,33 @@ void Application::resetCommBus() {
 
 void Application::onKeypadCommand(KeypadData* cmdData) {
     String key;
-    uint8_t readCard[cmdData->size];
     for (uint8_t i = 0; i < cmdData->size; i++) {
         key += String((char)cmdData->data[i], HEX);
-        
     }
 
-    switch (cmdData->command) {
-        case (uint8_t)KeypadCommands::ARM_AWAY:
+    // TODO validate key. If invalid, send key rejection
+    // back and take no other action.
+
+    switch ((KeypadCommands)cmdData->command) {
+        case KeypadCommands::ARM_AWAY:
+            armState = ArmState::ARMED_AWAY;
+            CoreIO.armLedOn();
+            // TODO what else to do?
+            break;
+        case KeypadCommands::ARM_STAY:
+            armState = ArmState::ARMED_STAY;
+            CoreIO.armLedOn();
+            // TODO what else to do?
+            break;
+        case KeypadCommands::DISARM:
+            armState = ArmState::DISARMED;
+            CoreIO.armLedOff();
+            // TODO what else to do?
+            break;
+        case KeypadCommands::LOCK:
 
             break;
-        case (uint8_t)KeypadCommands::ARM_STAY:
-
-            break;
-        case (uint8_t)KeypadCommands::DISARM:
-
-            break;
-        case (uint8_t)KeypadCommands::LOCK:
-
-            break;
-        case (uint8_t)KeypadCommands::UNLOCK:
+        case KeypadCommands::UNLOCK:
 
             break;
         default:
@@ -524,9 +639,15 @@ void Application::onKeypadCommand(KeypadData* cmdData) {
     }
 }
 
-void Application::keypadCommandCallback(KeypadData* cmdData, void* thisPointer) {
-	Application* self = static_cast<Application*>(thisPointer);
-	self->onKeypadCommand(cmdData);
+void Application::onFobRead(Tag* tagData) {
+    for (uint8_t i = 0; i < tagData->records; i++) {
+        String key;
+        for (uint8_t j = 0; j < tagData->size; j++) {
+            key += String((char)tagData->tagBytes[i], HEX);
+        }
+
+        // TODO Check key validity then fire appropriate action.
+    }
 }
 
 void Application::handleControlRequest(ControlCommand command) {
@@ -1153,16 +1274,32 @@ void Application::update() {
     #endif
     mqttClient.loop();
 
+    // TODO Keypad input could be a command to arm/disarm the system,
+    // unlock a door, see certain statuses, etc. Unlike other
+    // security/access control systems though (I'm looking at you, DSC...),
+    // our keypads will NOT be used for system configuration. Configuration
+    // should be perform eith via OTA config data updates, or via config messages
+    // sent over MQTT or by the local serial console.
     KeypadData kpData;
     if (xQueueReceive(keypadQueue, &kpData, 0)) {
-        // TODO What do do with the keypad data?
+        onKeypadCommand(&kpData);
     }
 
+    // TODO processing tags should be relatively simple:
+    // Read each tag and verify if it is valid. If it *valid* then an appropriate
+    // action should be taken (ie. firing a relay that controls a solenoid for
+    // unlocking a door).
     Tag tag;
     if (xQueueReceive(fobReaderQueue, &tag, 0)) {
-        // TODO What do do with the card we received?
+        onFobRead(&tag);
     }
 
+    // TODO We should probably implement some kind of "reaction manager" so-to-speak to
+    // handle how to react to these inputs.  This should involve some sort of mapping
+    // that defines what should happen if an input is triggered. For example:
+    // A REX attached to an input triggers a relay controlling a lock solenoid to unlock
+    // a door. Or a door contact attached to an input triggers an alarm condition and
+    // a siren goes off.
     uint8_t dcValue = 0;
     if (xQueueReceive(dryContactQueue, &dcValue, 0)) {
         // TODO What to do with the DC value?
