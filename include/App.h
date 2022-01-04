@@ -10,6 +10,7 @@
 
 #include "Adafruit_MCP23017.h"
 #include "config.h"
+#include "Doors.h"
 #include "LED.h"
 #include "NTPClient.h"
 #include "PubSubClient.h"
@@ -57,6 +58,7 @@ public:
 	QueueHandle_t optoContactQueue;
 	vector<Keypad> keypads;
 	vector<FobReader> fobReaders;
+	vector<Door> doors;
 	NTPClient *timeClient;
 	RTC_DS1307 rtc;
 	volatile SystemState sysState = SystemState::BOOTING;
@@ -99,6 +101,7 @@ private:
 	vector<byte> devicesFound;
 	vector<Adafruit_MCP23017> additionalBusses;
 	vector<RelayModule> relayModules;
+	String statusMsg;
 	volatile ArmState armState = ArmState::DISARMED;
 
 private:

@@ -29,12 +29,17 @@ void Keypad::writeBytes(uint8_t *bytes, size_t len) {
 
 uint8_t Keypad::readByte() {
 	this->_wire->requestFrom(this->_i2cAddress, (uint8_t)1);
+	while (this->_wire->available() < 1) { ; }
 	return this->_wire->read();
 }
 
 uint8_t* Keypad::readBytes(size_t len) {
 	uint8_t* buffer = new uint8_t; 
 	this->_wire->requestFrom(this->_i2cAddress, (uint8_t)len);
+	while (!this->_wire->available() < len) {
+		// Wait until all the bytes have arrived.
+		;
+	}
 
 	for (size_t i = 0; i < len; i++) {
 		buffer[i] = this->_wire->read();
@@ -68,16 +73,25 @@ KeypadData* Keypad::readEntries() {
 	// command data from the payload.
 	uint8_t *payload = this->readBytes(KEYPAD_DATA_BUFFER_SIZE + 3);
 	if (payload[0] == KEYPAD_GET_CMD_DATA) {
+		this->_commandData->id = this->getId();
 		this->_commandData->command = payload[1];
 		this->_commandData->size = payload[2];
 		for (uint8_t i = 0; i < this->_commandData->size; i++) {
 			this->_commandData->data[i] = payload[i + 3];
 		}
 
-		delete payload;
+		delete[] payload;
 		return this->_commandData;
 	}
 
-	delete payload;
+	delete[] payload;
 	return nullptr;
+}
+
+void Keypad::setId(uint8_t id) {
+	this->_id = id;
+}
+
+uint8_t Keypad::getId() {
+	return this->_id;
 }

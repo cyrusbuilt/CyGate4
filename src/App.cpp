@@ -6,7 +6,6 @@
 
 #include "ArduinoJson.h"
 #include "Console.h"
-#include "Doors.h"
 #include "ESPCrashMonitor-master/ESPCrashMonitor.h"
 #include "ResetManager.h"
 
@@ -69,8 +68,10 @@ void appHandleBusResetCommand() {
 Application* Application::singleton = nullptr;
 
 Application::Application() {
-	// TODO don't forget to call setClient() on mqttClient!
-	this->singleton = this;
+    if (Application::singleton == nullptr) {
+	    Application::singleton = this;
+    }
+    this->mqttClient.setClient(this->wifiClient);
 }
 
 void Application::printNetworkInfo() {
@@ -117,14 +118,17 @@ void Application::publishSystemState() {
         uint16_t freeMem = ESP.getFreeHeap() - 512;
 
         DynamicJsonDocument doc(freeMem);
-        doc["client_id"] = config.hostname;
+        doc["clientId"] = config.hostname;
         doc["systemState"] = (uint8_t)sysState;
         doc["firmwareVersion"] = FIRMWARE_VERSION;
         doc["armState"] = (uint8_t)armState;
+        doc["statusMsg"] = statusMsg;
 
         JsonArray theDoors = doc.createNestedArray("doors");
         auto doors = DoorManager.getDoors();
         for (auto d = doors.begin(); d != doors.end(); d++) {
+            // TODO We are going to need logic for updating state data based on the states of the
+            // devices associated with the door.
             JsonObject obj;
             obj["name"] = d->name;
             obj["state"] = (uint8_t)d->state;
@@ -142,6 +146,10 @@ void Application::publishSystemState() {
                 for (auto r = d->readers.begin(); r != d->readers.end(); r++) {
                     JsonObject rdr;
                     rdr["id"] = r->id;
+                    // TODO add result of self-test?
+                    // TODO add firmware version?
+                    // TODO add MiFare version?
+                    // TODO The above things probably need to be retrieved during device enumeration?
                     readers.add(rdr);
                 }
             }
@@ -151,6 +159,7 @@ void Application::publishSystemState() {
                 for (auto k = d->keypads.begin(); k != d->keypads.end(); k++) {
                     JsonObject kpd;
                     kpd["id"] = k->id;
+                    // TODO add keypad firmware version?
                     keypads.add(kpd);
                 }
             }
@@ -179,6 +188,7 @@ void Application::publishSystemState() {
             Serial.println(F("ERROR: Failed to publish message."));
         }
 
+        statusMsg = "";
         doc.clear();
         CoreIO.heartbeatLedOff();
     }
@@ -440,11 +450,44 @@ void Application::loadDoors() {
         for (auto d : doors) {
             Door theDoor;
             theDoor.name = d["name"].as<const char*>();
-            // TODO load the remaining model
+
+            JsonArray rdrs = d["readers"];
+            for (auto r : rdrs) {
+                Reader reader;
+                reader.id = r["id"].as<uint8_t>(); 
+                theDoor.readers.push_back(reader);
+            }
+
+            JsonArray keypds = d["keypads"];
+            for (auto k : keypds) {
+                DoorKeypad kpd;
+                kpd.id = k["id"].as<uint8_t>();
+                theDoor.keypads.push_back(kpd);
+            }
+
+            JsonArray inps = d["inputs"];
+            for (auto in : inps) {
+                DoorInput di;
+                di.inputId = in["inputId"].as<uint8_t>();
+                di.moduleId = in["moduleId"].as<uint8_t>();
+                di.type = (InputType)in["type"].as<uint8_t>();
+                theDoor.inputs.push_back(di);
+            }
+
+            JsonObject rel = d["lockRelay"];
+
+            LockRelay lockRelay;
+            lockRelay.moduleId = rel["moduleId"].as<uint8_t>();
+            lockRelay.relayId = rel["relayId"].as<uint8_t>();
+
+            theDoor.lockRelay = lockRelay;
+            
+            this->doors.push_back(theDoor);
         }
     }
 
     doc.clear();
+    Serial.println(F("DONE"));
 }
 
 void Application::doFactoryRestore() {
@@ -604,13 +647,19 @@ void Application::resetCommBus() {
 }
 
 void Application::onKeypadCommand(KeypadData* cmdData) {
-    String key;
+    String key = "";
     for (uint8_t i = 0; i < cmdData->size; i++) {
         key += String((char)cmdData->data[i], HEX);
     }
 
+    Serial.print(F("INFO: [KEY] Got keypad code: "));
+    Serial.println(key);
+
     // TODO validate key. If invalid, send key rejection
     // back and take no other action.
+
+    // TODO if invalid key, need a way to signal back to the user
+    // of bad input. Need support for this in keypad firmware first.
 
     switch ((KeypadCommands)cmdData->command) {
         case KeypadCommands::ARM_AWAY:
@@ -641,12 +690,18 @@ void Application::onKeypadCommand(KeypadData* cmdData) {
 
 void Application::onFobRead(Tag* tagData) {
     for (uint8_t i = 0; i < tagData->records; i++) {
-        String key;
+        String key = "";
         for (uint8_t j = 0; j < tagData->size; j++) {
             key += String((char)tagData->tagBytes[i], HEX);
         }
 
+        Serial.print(F("INFO: [PROX] Got new tag: "));
+        Serial.println(key);
+
         // TODO Check key validity then fire appropriate action.
+        // TODO How do we check validity?
+        // TODO How do we know what action to take?
+        // TODO if key is invalid, need to call this->fobReaders.at(tagData.id).badCard()
     }
 }
 
@@ -672,14 +727,14 @@ void Application::onMqttMessage(char* topic, byte* payload, unsigned int length)
     StaticJsonDocument<200> doc;
     DeserializationError error = deserializeJson(doc, msg);
     if (error) {
-        Serial.print(F("ERROR: Failed to parse MQTT message to JSON: "));
+        Serial.print(F("ERROR: [MQTT] Failed to parse MQTT message to JSON: "));
         Serial.println(error.c_str());
         doc.clear();
         return;
     }
 
-    if (doc.containsKey("client_id")) {
-        String id = doc["client_id"].as<String>();
+    if (doc.containsKey("clientId")) {
+        String id = doc["clientId"].as<String>();
         id.toUpperCase();
         if (!id.equals(config.hostname)) {
             Serial.println(F("INFO: Control message not intended for this host. Ignoring..."));
@@ -860,6 +915,7 @@ void Application::initCardReaders() {
 	
 	uint8_t count = 0;
 	uint8_t addr = 0;
+    uint8_t devId = 0;
 	for (std::size_t i = 0; i < devicesFound.size(); i++) {
 		if (i >= 120 && i <= 127) {
 			addr = devicesFound.at(i);
@@ -873,8 +929,10 @@ void Application::initCardReaders() {
 
 				Serial.print(F("INIT: Initializing fob reader at address 0x"));
 				Serial.println(reader.getAddress(), HEX);
+                reader.setId(devId);
 				reader.init();  // TODO init returns a status code
 				fobReaders.push_back(reader);
+                devId++;
 			}
 		}
 	}
@@ -930,6 +988,7 @@ void Application::initKeypads() {
 	
 	uint8_t count = 0;
 	uint8_t addr = 0;
+    uint8_t devId = 0;
 	for (std::size_t i = 0; i < devicesFound.size(); i++) {
         if (i >= 80 && i < 88) {
             addr = devicesFound.at(i);
@@ -943,8 +1002,10 @@ void Application::initKeypads() {
 
                 Serial.print(F("INIT: Initializing keypad at address 0x"));
                 Serial.println(keypad.getAddress(), HEX);
+                keypad.setId(devId);
                 keypad.init();  // TODO init() returns status value.
                 keypads.push_back(keypad);
+                devId++;
             }
         }
     }
@@ -1262,6 +1323,7 @@ void Application::init() {
     inputTask = initInputTask();
     initConsole();
     sysState = SystemState::NORMAL;
+    statusMsg = "Boot sequence complete";
     Serial.println(F("INIT: Boot sequence complete."));
     ESPCrashMonitor.enableWatchdog(ESPCrashMonitorClass::ETimeout::Timeout_2s);
 }

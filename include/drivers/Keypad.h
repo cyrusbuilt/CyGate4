@@ -19,6 +19,7 @@ struct KeypadData {
 	uint8_t size;
 	uint8_t command;
 	uint8_t data[KEYPAD_DATA_BUFFER_SIZE];
+	uint8_t id;
 };
 
 enum class KeypadCommands : uint8_t {
@@ -37,6 +38,8 @@ public:
 	bool detect();
 	uint8_t init();
 	KeypadData* readEntries();
+	void setId(uint8_t id);
+	uint8_t getId();
 
 private:
 	void writeByte(uint8_t byte);
@@ -45,6 +48,7 @@ private:
 	uint8_t* readBytes(size_t len);
 
 	uint8_t _i2cAddress;
+	uint8_t _id;
 	TwoWire *_wire;
 	KeypadData *_commandData;
 };

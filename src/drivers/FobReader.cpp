@@ -43,16 +43,26 @@ uint8_t FobReader::init() {
 	return this->readByte();
 }
 
-uint8_t FobReader::selfTest() {
+bool FobReader::selfTest() {
+	bool result = false;
 	this->writeByte(FOBREADER_SELF_TEST);
-	return this->readByte();
+	
+	// Byte 0: 0xDC (command ack)
+	// Byte 1: Result (1 = pass, 0 = fail)
+	uint8_t *response = this->readBytes(FOBREADER_SELF_TEST_SIZE);
+	if (response[0] == FOBREADER_SELF_TEST) {
+		result = (bool)response[1];
+	}
+
+	delete[] response;
+	return result;
 }
 
 String FobReader::getFirmwareVersion() {
 	String result;
 	this->writeByte(FOBREADER_GET_FIRMWARE);
 
-	// Byte 0: 0xFE (command ack)
+	// Byte 0: 0xFC (command ack)
 	// Byte 1: Length of version string in bytes
 	// Bytes 2 - n: Version string
 	uint8_t *response = this->readBytes(FOBREADER_FW_PREAMBLE_SIZE);
@@ -65,7 +75,7 @@ String FobReader::getFirmwareVersion() {
 		delete val;
 	}
 
-	delete response;
+	delete[] response;
 	return result;
 }
 
@@ -80,31 +90,32 @@ bool FobReader::isNewTagPresent() {
 		result = (bool)response[1];
 	}
 
-	delete response;
+	delete[] response;
 	return result;
 }
 
 bool FobReader::getTagData() {
-	this->writeByte(FOBREADER_GET_SERIALS);
+	this->writeByte(FOBREADER_GET_TAGS);
 
 	// Byte 0: 0xFD (command ack)
 	// Byte 1: Record count
 	// Byte 2: Tag size
 	// Byte 3 - 13: Tag UID bytes
 	uint8_t *response = this->readBytes(FOBREADER_TAG_DATA_SIZE);
-	if (response[0] == FOBREADER_GET_SERIALS) {
+	if (response[0] == FOBREADER_GET_TAGS) {
 		memset(&this->tag, 0, sizeof(Tag));
+		this->tag.id = this->getId();
 		this->tag.records = response[1];
 		this->tag.size = response[2];
 		for (size_t i = 0; i < this->tag.size; i++) {
 			this->tag.tagBytes[i] = response[i + 3];
 		}
 
-		delete response;
+		delete[] response;
 		return true;
 	}
 
-	delete response;
+	delete[] response;
 	return false;
 }
 
@@ -119,6 +130,19 @@ uint8_t FobReader::getMiFareVersion() {
 		result = response[1];
 	}
 
-	delete response;
+	delete[] response;
 	return result;
+}
+
+void FobReader::setId(uint8_t id) {
+	this->_id = id;
+}
+
+uint8_t FobReader::getId() {
+	return this->_id;
+}
+
+bool FobReader::badCard() {
+	this->writeByte(FOBREADER_BAD_CARD);
+	return this->readByte() == FOBREADER_BAD_CARD;
 }
