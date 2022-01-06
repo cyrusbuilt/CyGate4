@@ -126,6 +126,7 @@ private:
 	void initMDNS();
 	void initOTA();
 	void initConsole();
+	void initApiClient();
 	void onKeypadCommand(KeypadData* cmdData);
 	void onFobRead(Tag* tagData);
 };

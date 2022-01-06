@@ -21,6 +21,7 @@
 #define MQTT_PORT 1883
 #define DEFAULT_HOST_NAME "CYGATE4"
 #define NTP_POOL "pool.ntp.org"
+
 #ifdef SUPPORT_OTA
 	#include <ArduinoOTA.h>
 	#define DEFAULT_OTA_HOST_PORT 8266
@@ -53,6 +54,13 @@ typedef struct {
 	bool otaEnable;
     uint16_t otaPort;
     String otaPassword;
+
+    // API auth stuff
+    String loginEndpoint;
+    String cardValidateEndpoint;
+    String pinValidateEndpoint;
+    String apiUsername;
+    String apiPassword;
 } config_t;
 
 #endif

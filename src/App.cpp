@@ -5,6 +5,7 @@
 #include <Wire.h>
 
 #include "ArduinoJson.h"
+#include "services/AuthService.h";
 #include "Console.h"
 #include "ESPCrashMonitor-master/ESPCrashMonitor.h"
 #include "ResetManager.h"
@@ -204,7 +205,7 @@ void Application::saveConfiguration() {
         return;
     }
 
-	StaticJsonDocument<350> doc;
+	StaticJsonDocument<750> doc;
     doc["hostname"] = config.hostname;
     doc["useDhcp"] = config.useDhcp;
     doc["ip"] = config.ip.toString();
@@ -220,6 +221,11 @@ void Application::saveConfiguration() {
     doc["mqttUsername"] = config.mqttUsername;
     doc["mqttPassword"] = config.mqttPassword;
 	doc["clockTimezone"] = config.clockTimezone;
+    doc["loginEndpoint"] = config.loginEndpoint;
+    doc["cardValidateEndpoint"] = config.cardValidateEndpoint;
+    doc["pinValidateEndpoint"] = config.pinValidateEndpoint;
+    doc["apiUsername"] = config.apiUsername;
+    doc["apiPassword"] = config.apiPassword;
 	#ifdef SUPPORT_OTA
 	doc["otaEnable"] = config.otaEnable;
 	doc["otaPort"] = config.otaPort;
@@ -382,6 +388,11 @@ void Application::loadConfiguration() {
     config.mqttUsername = doc.containsKey("mqttUsername") ? doc["mqttUsername"].as<String>() : "";
     config.mqttPassword = doc.containsKey("mqttPassword") ? doc["mqttPassword"].as<String>() : "";
 	config.clockTimezone = doc.containsKey("clockTimezone") ? doc["clockTimezone"].as<int>() : DEFAULT_TIMEZONE;
+    config.loginEndpoint = doc.containsKey("loginEndpoint") ? doc["loginEndpoint"].as<String>() : "";
+    config.cardValidateEndpoint = doc.containsKey("cardValidateEndpoint") ? doc["cardValidateEndpoint"].as<String>() : "";
+    config.pinValidateEndpoint = doc.containsKey("pinValidateEndpoint") ? doc["pinValidateEndpoint"].as<String>() : "";
+    config.apiUsername = doc.containsKey("apiUsername") ? doc["apiUsername"].as<String>() : "";
+    config.apiPassword = doc.containsKey("apiPassword") ? doc["apiPassword"].as<String>() : "";
 
     #ifdef SUPPORT_OTA
 		config.otaEnable = doc.containsKey("otaEnable") ? doc["otaEnable"].as<bool>() : true;
@@ -1302,6 +1313,15 @@ void Application::initConsole() {
     Console.onBusReset(appHandleBusResetCommand);
 }
 
+void Application::initApiClient() {
+    Serial.print(F("INIT: Initializing API client... "));
+    AuthService.setApiCredentials(config.apiUsername, config.apiPassword);
+    AuthService.setCardAuthEndpoint(config.cardValidateEndpoint.c_str());
+    AuthService.setPinAuthEndpoint(config.pinValidateEndpoint.c_str());
+    AuthService.setLoginEndpoint(config.loginEndpoint.c_str());
+    Serial.println(F("DONE"));
+}
+
 void Application::init() {
     keypadQueue = xQueueCreate(5, sizeof(KeypadData));
     fobReaderQueue = xQueueCreate(5, sizeof(Tag));
@@ -1315,6 +1335,7 @@ void Application::init() {
 	keypadCheckTask = initKeypadDevices();
     fobReaderCheckTask = initFobReaderDevices();
 	initFilesystem();
+    initApiClient();
     wifiCheckTask = initCheckWiFi();
     mqttCheckTask = initCheckMqtt();
     initMDNS();

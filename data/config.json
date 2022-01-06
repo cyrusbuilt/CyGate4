@@ -1,3 +1,26 @@
 {
-	
+	"hostname": "cygate4",
+	"isDhcp": false,
+	"ip": "192.168.0.175",
+	"gateway": "192.168.0.1",
+	"subnetmask": "255.255.255.0",
+	"dns": "192.168.0.1",
+	"wifiSSID": "your_ssid_here",
+	"wifiPassword": "your_password_here",
+	"mqttBroker": "your_broker_ip",
+	"mqttPort": 8883,
+	"mqttControlChannel": "cygate4/control",
+	"mqttStatusChannel": "cygate4/status",
+	"mqttUsername": "your_mqtt_username",
+	"mqttPassword": "your_mqtt_password",
+	"clockTimezone": -4,
+	"otaEnable": true,
+	"otaPort": 8266,
+	"otaPassword": "your_ota_password",
+	"mdnsEnable": true,
+	"loginEndpoint": "redqueen_login_endpoint",
+	"cardValidateEndpoint": "redqueen_card_validate_endpoint",
+	"pinValidateEndpoint": "redqueen_pin_validate_endpoint",
+	"apiUsername": "api_username",
+	"apiPassword": "api_password"
 }
