@@ -5,7 +5,7 @@
 #include <Wire.h>
 
 #include "ArduinoJson.h"
-#include "services/AuthService.h";
+#include "services/AuthService.h"
 #include "Console.h"
 #include "ESPCrashMonitor-master/ESPCrashMonitor.h"
 #include "ResetManager.h"
@@ -666,11 +666,10 @@ void Application::onKeypadCommand(KeypadData* cmdData) {
     Serial.print(F("INFO: [KEY] Got keypad code: "));
     Serial.println(key);
 
-    // TODO validate key. If invalid, send key rejection
-    // back and take no other action.
-
-    // TODO if invalid key, need a way to signal back to the user
-    // of bad input. Need support for this in keypad firmware first.
+    if (AuthService.checkPinValid(key.c_str())) {
+        // TODO if invalid key, need a way to signal back to the user
+        // of bad input. Need support for this in keypad firmware first.
+    }
 
     switch ((KeypadCommands)cmdData->command) {
         case KeypadCommands::ARM_AWAY:
@@ -709,15 +708,33 @@ void Application::onFobRead(Tag* tagData) {
         Serial.print(F("INFO: [PROX] Got new tag: "));
         Serial.println(key);
 
-        // TODO Check key validity then fire appropriate action.
-        // TODO How do we check validity?
-        // TODO How do we know what action to take?
-        // TODO if key is invalid, need to call this->fobReaders.at(tagData.id).badCard()
+        if (AuthService.checkCardValid(key.c_str())) {
+            Serial.println(F("INFO: [PROX] Tag is valid."));
+            // TODO Check key validity then fire appropriate action.
+            // TODO How do we know what action to take?
+            // TODO Should we always verify keyfobs/keypad entries against the server?
+            // TODO Or should we attempt to download a list from the server and hold it
+            // in flash? If we can hold in flash, we woudn't need to hit the server all
+            // the time, but I feel like the user DB could grow to be fairly large and we
+            // have limited storage for the JSON response and RAM to hold it's contents.
+            // By comparison, commercial door controllers such as the Kantech KT-400 have
+            // 256MB Flash, and 128MB RAM. 
+        }
+        else {
+            Serial.println(F("WARN: [PROX] Invalid tag."));
+            if (this->fobReaders.at(tagData->id).badCard()) {
+                Serial.println(F("WARN: [PROX] No or invalid ACK from reader."));
+            }
+        }
     }
 }
 
 void Application::handleControlRequest(ControlCommand command) {
-    // TODO handle incoming commands.
+    switch (command) {
+        // TODO handle incoming commands.
+        default:
+            Serial.println(F("WARN: [MQTT] Invalid control command received."));
+    }
 }
 
 void Application::onMqttMessage(char* topic, byte* payload, unsigned int length) {
@@ -944,6 +961,7 @@ void Application::initCardReaders() {
 				reader.init();  // TODO init returns a status code
 				fobReaders.push_back(reader);
                 devId++;
+                count++;
 			}
 		}
 	}

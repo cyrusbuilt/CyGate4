@@ -59,7 +59,7 @@ bool FobReader::selfTest() {
 }
 
 String FobReader::getFirmwareVersion() {
-	String result;
+	String result = "";
 	this->writeByte(FOBREADER_GET_FIRMWARE);
 
 	// Byte 0: 0xFC (command ack)
@@ -70,9 +70,16 @@ String FobReader::getFirmwareVersion() {
 		size_t len = response[1];
 
 		// The second response is the actual version string in bytes.
-		uint8_t *val = this->readBytes(len);
-		result = String((char*)val);
-		delete val;
+		unsigned int payloadSize = len + FOBREADER_FW_PREAMBLE_SIZE;
+		uint8_t *val = this->readBytes(payloadSize);
+		for (unsigned int i = FOBREADER_FW_PREAMBLE_SIZE, i < payloadSize; i++) {
+			// Skip string null terminator
+			if (val[i] != 0x0) {
+				result += (char)val[i];
+			}
+		}
+		
+		delete[] val;
 	}
 
 	delete[] response;

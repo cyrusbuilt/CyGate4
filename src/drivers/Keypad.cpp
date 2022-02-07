@@ -36,7 +36,7 @@ uint8_t Keypad::readByte() {
 uint8_t* Keypad::readBytes(size_t len) {
 	uint8_t* buffer = new uint8_t; 
 	this->_wire->requestFrom(this->_i2cAddress, (uint8_t)len);
-	while (!this->_wire->available() < len) {
+	while (this->_wire->available() < len) {
 		// Wait until all the bytes have arrived.
 		;
 	}
